@@ -14,14 +14,15 @@ os.makedirs(OUT, exist_ok=True)
 
 # ---------- 主角圖：裁掉透明邊，縮成畫面大小的 2 倍 ----------
 # name: (來源檔, 畫面上高度 px)
-SPRITES = {
+# (舊版：直接從 kiwi-Legend 裁圖；現在主角圖改由 tools/import_art.py 處理)
+SPRITES_OLD = {
     "idle": ("player.png", 112),
     "jump": ("player-jump.png", 128),
     "slash": ("player-slash.png", 108),
     "dash": ("player-rush.png", 150),
     "die": ("player-die.png", 110),
 }
-for name, (src, h) in SPRITES.items():
+for name, (src, h) in {}.items():  # 主角圖改用 import_art.py
     im = Image.open(os.path.join(SRC, src)).convert("RGBA")
     a = im.split()[3].point(lambda v: 255 if v > 20 else 0)
     im = im.crop(a.getbbox())

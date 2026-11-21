@@ -4,7 +4,7 @@ import os, string
 from fontTools import subset
 from fontTools.ttLib import TTCollection
 ROOT = os.path.join(os.path.dirname(__file__), "..")
-src = open(os.path.join(ROOT, "game/scripts/main.gd"), encoding="utf-8").read()
+src = "".join(open(os.path.join(ROOT, "game/scripts", f), encoding="utf-8").read() for f in os.listdir(os.path.join(ROOT, "game/scripts")) if f.endswith(".gd"))
 chars = set(string.printable) | {c for c in src if ord(c) > 127} | set("←→↑↓！？…「」：，。、%")
 ttc = TTCollection("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc")
 font = ttc.fonts[0]

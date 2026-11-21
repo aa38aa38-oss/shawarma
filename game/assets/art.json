@@ -1,0 +1,54 @@
+{
+ "hero": {
+  "dash": {
+   "frames": [
+    {
+     "file": "hero/dash_0.png",
+     "ax": 0.499,
+     "ay": 1.0
+    }
+   ],
+   "fps": 16
+  },
+  "die": {
+   "frames": [
+    {
+     "file": "hero/die_0.png",
+     "ax": 0.484,
+     "ay": 1.0
+    }
+   ],
+   "fps": 6
+  },
+  "idle": {
+   "frames": [
+    {
+     "file": "hero/idle_0.png",
+     "ax": 0.499,
+     "ay": 1.0
+    }
+   ],
+   "fps": 6
+  },
+  "jump": {
+   "frames": [
+    {
+     "file": "hero/jump_0.png",
+     "ax": 0.321,
+     "ay": 1.0
+    }
+   ],
+   "fps": 10
+  },
+  "slash1": {
+   "frames": [
+    {
+     "file": "hero/slash1_0.png",
+     "ax": 0.357,
+     "ay": 1.0
+    }
+   ],
+   "fps": 10
+  }
+ }
+}

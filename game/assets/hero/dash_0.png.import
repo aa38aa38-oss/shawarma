@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://x1426aw05o4r"
-path="res://.godot/imported/hero_die.png-75e6b955c469632b622537437d331d38.ctex"
+uid="uid://co5nkj1m2xxgp"
+path="res://.godot/imported/dash_0.png-ba25be86d1b2c3539c8535d4c79dfebb.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/hero_die.png"
-dest_files=["res://.godot/imported/hero_die.png-75e6b955c469632b622537437d331d38.ctex"]
+source_file="res://assets/hero/dash_0.png"
+dest_files=["res://.godot/imported/dash_0.png-ba25be86d1b2c3539c8535d4c79dfebb.ctex"]
 
 [params]
 
