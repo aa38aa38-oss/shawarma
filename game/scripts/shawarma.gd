@@ -8,7 +8,8 @@ extends RefCounted
 const NCOL := 24
 const STEP := TAU / NCOL
 const MEAT_MAX := 100.0
-const ROW_H := 62.0
+const ROW_H := 50.0
+const SLICES := 5          # 每一列畫成 5 片薄肉 (像真的沙威瑪一片片疊起來)
 const COLS_PER_FACE := 4
 const ELL := 0.13
 
@@ -67,7 +68,7 @@ func setup(k: String, diff: float) -> void:
 	r_core = float(info["r_core"])
 	r_max = float(info["r_max"])
 	growth = float(info["growth"]) * diff
-	spin_speed = float(info["spin"]) * (0.75 + 0.25 * diff) * (1.0 if randf() < 0.6 else -1.0)
+	spin_speed = float(info["spin"]) * (0.75 + 0.25 * diff)
 	seed_delay = float(info["seed"]) / diff
 	grease = float(info["grease"]) / diff
 	core_hp_max = int(info["core_hp"])
@@ -98,8 +99,21 @@ func setup(k: String, diff: float) -> void:
 
 
 # ---------------- 幾何 ----------------
-func radius(m: float) -> float:
-	return r_core + (r_max - r_core) * m / MEAT_MAX
+## 肉的輪廓：上面寬、下面收窄的「蛋形」(像真的沙威瑪)
+func profile(y: float) -> float:
+	var f := clampf((y - top) / (bot - top), 0.0, 1.0)
+	return 0.9 + 0.16 * sin(PI * minf(1.0, f + 0.2)) - 0.2 * f * f
+
+
+func radius(m: float, r: int = -1) -> float:
+	var pr := profile(row_y(r) + ROW_H * 0.5) if r >= 0 else 1.0
+	return r_core + (r_max * pr - r_core) * m / MEAT_MAX
+
+
+## 每一片薄肉邊緣凹凸不平 (固定在肉上，跟著轉)
+func slice_jag(c: int, k: int) -> float:
+	var h := sin(c * 12.9898 + k * 78.233) * 43758.5453
+	return (h - floor(h)) - 0.5
 
 
 func row_y(r: int) -> float:
@@ -116,7 +130,7 @@ func pp(rad: float, a: float, y: float) -> Vector2:
 
 
 func cell_radius(i: int) -> float:
-	return radius(meat[i]) + bulge[i] * 7.0 if meat[i] > 0.0 else r_core
+	return radius(meat[i], i % nrow) + bulge[i] * 7.0 if meat[i] > 0.0 else r_core
 
 
 # ---------------- 數值 ----------------
@@ -212,7 +226,7 @@ func hit(rect: Rect2, dmg: float, phi: float) -> Array:
 			var i := c * nrow + r
 			if meat[i] <= 0.0:
 				continue
-			var rad := radius(meat[i])
+			var rad := radius(meat[i], r)
 			var xa := cx + rad * sin(a0)
 			var xb := cx + rad * sin(a0 + STEP)
 			var cell := Rect2(minf(xa, xb), row_y(r) + ELL * rad * cm, absf(xb - xa), ROW_H)

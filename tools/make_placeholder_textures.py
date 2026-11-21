@@ -43,30 +43,41 @@ def save(name, rgb):
     print(name, im.size)
 
 
-# ---------- 烤熟的肉表面 ----------
-warp = pnoise(4, 2, 1, 1)
-layers = np.sin((Y + 60 * warp + 14 * pnoise(3, 8, 1, 2)) * 2 * np.pi / 30.0)  # 一片片疊起來的肉
-crisp = pnoise(5, 4, 1, 3)
-char = pnoise(4, 6, 1, 4)
-lump = pnoise(4, 10, 1.5, 11)
-base = lerp((0.66, 0.35, 0.14), (0.4, 0.18, 0.07), crisp * 0.6 + lump * 0.4)
-ridge = np.clip(layers, 0, 1) ** 2
-col = lerp(base, (0.86, 0.56, 0.26), ridge * 0.75)              # 隆起處金黃酥脆
-groove = np.clip(-layers, 0, 1) ** 3
-col = lerp(col, (0.25, 0.1, 0.03), groove * 0.8)                # 層與層之間的深色縫
-col = lerp(col, (0.12, 0.05, 0.02), np.clip((char - 0.8) * 6, 0, 1) * np.clip(layers, 0, 1))  # 焦黑
-fat = pnoise(3, 30, 1, 5)
-col = lerp(col, (1.0, 0.86, 0.55), np.clip((fat - 0.86) * 9, 0, 1) * ridge)  # 油亮的脂肪
-grain = rng.normal(0, 0.035, (H, W, 1))
-save("meat_surface.png", col + grain)
+# ---------- 烤熟的肉表面 (參考真的雞肉沙威瑪：一片片薄肉疊起來) ----------
+# 貼圖高 400px = 遊戲裡 6 列 × 5 片 = 30 片，每片 13.33px，跟遊戲裡的切片對齊
+NS = 30
+PER = H / NS
+warp = pnoise(4, 3, 1, 1)
+edge_n = pnoise(4, 12, 1, 2)                       # 每片邊緣凹凸
+yy = Y + (edge_n - 0.5) * 9.0 + (pnoise(3, 30, 0.6, 12) - 0.5) * 5.0
+band = (yy / PER) % 1.0                            # 0 = 一片的上緣, 1 = 下緣
+idx = np.floor(yy / PER)
+slice_tone = (np.sin(idx * 12.9898) * 43758.5453) % 1.0   # 每片顏色不同
+fiber = pnoise(4, 40, 0.15, 3)                     # 橫向肉纖維
+crisp = pnoise(4, 6, 1, 4)
+char = pnoise(4, 10, 1, 5)
 
-# ---------- 剛長出來的生肉 ----------
-layers2 = np.sin((Y + 18 * warp) * 2 * np.pi / 13.0)
-m = pnoise(4, 3, 1, 7)
-col = lerp((0.93, 0.5, 0.48), (0.78, 0.33, 0.33), m)
-col = lerp(col, (1.0, 0.88, 0.85), np.clip((pnoise(4, 10, 2, 8) - 0.7) * 4, 0, 1) * 0.8)  # 白色油花
-col = lerp(col, (0.6, 0.22, 0.2), np.clip(-layers2, 0, 1) ** 3 * 0.6)
-save("meat_raw.png", col + rng.normal(0, 0.03, (H, W, 1)))
+body = lerp((0.93, 0.8, 0.56), (0.8, 0.6, 0.33), slice_tone * 0.7 + fiber * 0.3)     # 淡金色雞肉
+col = body
+top_edge = np.clip(1.0 - band / 0.32, 0, 1) ** 1.5                                   # 上緣烤得金黃酥脆
+brown = np.clip((crisp - 0.25) * 1.8, 0, 1)
+col = lerp(col, (0.66, 0.38, 0.12), np.clip(top_edge * (0.4 + 0.9 * brown) + brown * 0.35, 0, 1))
+tip = np.clip(1.0 - band / 0.18, 0, 1)                                              # 最邊邊焦一點
+col = lerp(col, (0.42, 0.22, 0.07), tip * np.clip((char - 0.3) * 2.2, 0, 1))
+gap = np.clip((band - 0.82) / 0.18, 0, 1) ** 2                                       # 片與片之間的陰影縫
+col = lerp(col, (0.3, 0.17, 0.07), gap * 0.85)
+col = lerp(col, (0.25, 0.12, 0.04), np.clip((char - 0.72) * 5, 0, 1) * (1 - gap) * 0.8)    # 零星焦黑
+gloss = np.clip((pnoise(3, 25, 1, 6) - 0.8) * 6, 0, 1) * (1 - gap)                   # 油亮
+col = lerp(col, (1.0, 0.95, 0.8), gloss * 0.6)
+col = col * (0.92 + 0.16 * fiber[..., None])
+save("meat_surface.png", col + rng.normal(0, 0.025, (H, W, 1)))
+
+# ---------- 剛長出來的生肉 (粉紅、油花) ----------
+body = lerp((0.96, 0.62, 0.58), (0.84, 0.4, 0.4), slice_tone * 0.6 + fiber * 0.4)
+col = lerp(body, (1.0, 0.9, 0.86), np.clip((pnoise(4, 14, 1.5, 8) - 0.72) * 4, 0, 1) * 0.8)   # 白色油花
+col = lerp(col, (0.62, 0.25, 0.24), gap * 0.7)
+col = lerp(col, (1.0, 0.85, 0.82), np.clip(1.0 - band / 0.2, 0, 1) * 0.35)
+save("meat_raw.png", col + rng.normal(0, 0.02, (H, W, 1)))
 
 # ---------- 沙威核 (金屬 + 發光紋路) ----------
 metal = lerp((0.22, 0.2, 0.26), (0.38, 0.36, 0.42), pnoise(3, 2, 4, 9))

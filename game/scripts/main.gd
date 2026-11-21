@@ -27,6 +27,14 @@ const STAGES := [
 	{"name": "沙威瑪工廠", "diff": 1.4, "queue": ["beef", "spicy", "beef", "chicken", "spicy", "beef", "spicy", "beef", "boss"]},
 ]
 
+## 開場故事 (圖片放 assets/story/story_1.png ~ story_4.png；沒有圖時用遊戲畫面代替)
+const STORY := [
+	"深夜的夜市，沙威瑪攤的烤爐突然發出奇怪的光……",
+	"烤肉柱裡的「沙威核」甦醒了！肉一直長、一直長，整條夜市快被沙威瑪淹沒了！",
+	"就在這時，吃貨柯基英雄——奇異果，穿上紅色戰甲、拔出光劍！",
+	"「砍得比長得快就對了！」　沙威瑪斬，開始！",
+]
+
 const ANIM_FALLBACK := {
 	"run": "idle", "fall": "jump", "jump": "idle", "slash2": "slash1", "slash3": "slash1", "slash1": "idle",
 	"upslash": "jump", "hurt": "idle", "win": "idle", "dash": "run", "die": "idle",
@@ -50,7 +58,10 @@ var fx_add: Node2D
 var hud: Node2D
 var player_spr: Sprite2D
 
-var state := "title"      # title / play / clear / gameover / ending
+var state := "title"      # title / story / play / clear / gameover / ending
+var story_i := 0
+var story_chars := 0.0
+var story_imgs: Array = []
 var stage := 0
 var t := 0.0
 var state_t := 0.0
@@ -163,6 +174,9 @@ func _load_art() -> void:
 	meat_tex = load("res://assets/shawarma/meat_surface.png")
 	raw_tex = load("res://assets/shawarma/meat_raw.png")
 	core_tex = load("res://assets/shawarma/core.png")
+	for i in STORY.size():
+		var path := "res://assets/story/story_%d.png" % (i + 1)
+		story_imgs.append(load(path) if ResourceLoader.exists(path) else null)
 	var f := FileAccess.open("res://assets/art.json", FileAccess.READ)
 	var data: Dictionary = JSON.parse_string(f.get_as_text())
 	var hero: Dictionary = data["hero"]
@@ -341,7 +355,32 @@ func _process(delta: float) -> void:
 				shaw.events.clear()
 				_meat_fx(dt)
 				if confirm:
+					story_i = 0
+					story_chars = 0.0
+					state = "story"
+					state_t = 0.0
+					if not bgm.playing:
+						bgm.play()
+			"story":
+				shaw.update(dt)
+				shaw.events.clear()
+				_meat_fx(dt)
+				shaw.core_phase = story_i == 1
+				story_chars += dt * 26.0
+				var txt: String = STORY[story_i]
+				if Input.is_action_just_pressed("dash"):
+					shaw.core_phase = false
 					_start_game()
+				elif confirm and state_t > 0.2:
+					if story_chars < txt.length():
+						story_chars = txt.length()
+					else:
+						story_i += 1
+						story_chars = 0.0
+						state_t = 0.0
+						if story_i >= STORY.size():
+							shaw.core_phase = false
+							_start_game()
 			"play":
 				stage_time += dt
 				_update_play(dt)
@@ -630,29 +669,46 @@ func _do_attack() -> void:
 	p_up_slash = Input.is_action_pressed("up")
 	var big := p_combo == 3
 	var rect: Rect2
+	var f := float(p_face)
+	var mid := p_pos + Vector2(f * 30.0, -75.0)
 	if p_up_slash:
-		rect = Rect2(p_pos.x - 60, p_pos.y - 235, 120, 180)
-		arcs.append({"c": p_pos + Vector2(0, -120), "r": 72.0, "a0": PI + 0.25, "a1": TAU - 0.25, "life": 0.18, "big": big})
+		# 升龍斬：從身體前下方往頭上劃一大圈
+		rect = Rect2(p_pos.x - 70, p_pos.y - 280, 140, 240)
+		_slash_fx(p_pos + Vector2(f * 10.0, -130.0), 95.0, PI * 0.9 if p_face > 0 else PI * 0.1, PI * 1.2 * f, 26.0, 0.22)
+	elif not p_floor:
+		# 空中斬：範圍往上延伸，跳起來就砍得到上面的肉
+		var w := 170.0 if big else 140.0
+		var x0 := p_pos.x - 25.0 if p_face > 0 else p_pos.x + 25.0 - w
+		rect = Rect2(x0, p_pos.y - 225.0, w, 235.0)
+		_slash_fx(mid + Vector2(f * 5.0, -25.0), 110.0 if big else 95.0, -PI * 0.5 - f * 0.9 if p_face > 0 else -PI * 0.5 + 0.9, 3.4 * f, 30.0 if big else 24.0, 0.2)
+	elif big:
+		# 第 3 段：迴旋大斬
+		rect = Rect2(p_pos.x - 150.0, p_pos.y - 190.0, 300.0, 195.0)
+		_slash_fx(p_pos + Vector2(0, -80.0), 115.0, -PI * 0.5, TAU * 0.95 * f, 34.0, 0.26)
+		flash_screen = maxf(flash_screen, 0.05)
 	else:
-		var w := 160.0 if big else 125.0
-		var h := 145.0 if big else 112.0
-		var x0 := p_pos.x - 15.0 if p_face > 0 else p_pos.x + 15.0 - w
-		rect = Rect2(x0, p_pos.y - h - 4.0, w, h)
-		var c := p_pos + Vector2(p_face * 25.0, -60.0)
-		var r := 85.0 if big else 64.0
-		if p_face > 0:
-			arcs.append({"c": c, "r": r, "a0": -1.4, "a1": 1.2, "life": 0.16, "big": big})
+		var w := 135.0
+		var x0 := p_pos.x - 20.0 if p_face > 0 else p_pos.x + 20.0 - w
+		rect = Rect2(x0, p_pos.y - 158.0, w, 160.0)
+		if p_combo == 1:
+			# 第 1 段：由上往下斜劈
+			_slash_fx(mid, 88.0, -PI * 0.5 - 0.5 * f if p_face > 0 else -PI * 0.5 + 0.5, 2.9 * f, 24.0, 0.18)
 		else:
-			arcs.append({"c": c, "r": r, "a0": PI - 1.2, "a1": PI + 1.4, "life": 0.16, "big": big})
+			# 第 2 段：由下往上反手掃
+			_slash_fx(mid + Vector2(0, -6), 84.0, PI * 0.5 + 0.2 if p_face > 0 else PI * 0.5 - 0.2, -2.9 * f, 22.0, 0.18)
 	_play("slash", -6.0, 0.85 if big else randf_range(1.0, 1.2))
 	if shaw == null or shaw_state != "fight":
 		return
 	var dmg := SLASH_DMG * (1.8 if big else 1.0)
 	var hits: Array = shaw.hit(rect, dmg, phi)
 	var removed := 0.0
+	var n_imp := 0
 	for h in hits:
 		var cc: Vector2 = h[0]
 		removed += float(h[1])
+		if n_imp < 3:
+			n_imp += 1
+			_particle("impact", cc + Vector2(randf_range(-8, 8), randf_range(-8, 8)), Vector2.ZERO, Color.WHITE, 26.0 if big else 18.0, 0.16)
 		# 肉汁噴出 + 肉塊飛出
 		for k in 2:
 			_particle("juice", cc, Vector2(randf_range(-90, 90) + p_face * 120.0, randf_range(-300, -60)), Color(0.78, 0.45, 0.1, 0.9), randf_range(2.0, 3.5), randf_range(0.4, 0.7))
@@ -675,6 +731,7 @@ func _do_attack() -> void:
 		combo_t = 1.2
 		_play("core", -2.0, randf_range(0.9, 1.1))
 		var hp := rect.intersection(shaw.core_rect()).get_center()
+		_particle("impact", hp, Vector2.ZERO, Color.WHITE, 34.0, 0.2)
 		for k in 10:
 			_particle("spark", hp, Vector2(randf_range(-260, 260), randf_range(-260, 100)), Color(1, 0.9, 0.4), 3.0, 0.35)
 		if shaw.core_hp <= 0:
@@ -713,7 +770,7 @@ func _meat_fx(dt: float) -> void:
 		if shaw.meat[i] < 15.0:
 			continue
 		var y := shaw.row_y(r) + randf() * ROW_H
-		var p := Vector2(shaw.cx + side * shaw.radius(shaw.meat[i]), y)
+		var p := Vector2(shaw.cx + side * shaw.radius(shaw.meat[i], r), y)
 		_particle("juice", p, Vector2(side * randf_range(60, 200), randf_range(-150, 10)), Color(0.8, 0.48, 0.12, 0.85), randf_range(1.6, 2.8), randf_range(0.4, 0.8))
 	# 蒸氣
 	steam_t -= dt
@@ -729,7 +786,7 @@ func _handle_events() -> void:
 		var a := shaw.col_angle(c, phi) + STEP * 0.5
 		if cos(a) < 0.1:
 			continue
-		var p := shaw.pp(shaw.radius(shaw.meat[c * shaw.nrow + r]), a, shaw.row_y(r) + ROW_H * 0.5)
+		var p := shaw.pp(shaw.radius(shaw.meat[c * shaw.nrow + r], r), a, shaw.row_y(r) + ROW_H * 0.5)
 		match String(e[0]):
 			"sprout":
 				# 肉芽冒出來：噗滋
@@ -755,6 +812,8 @@ func _update_fx(dt: float) -> void:
 			p["s"] = float(p["s"]) + dt * 18.0
 		elif k == "chunk":
 			g = 1000.0
+		elif k == "impact":
+			g = 0.0
 		p["v"] = Vector2(p["v"]) + Vector2(0, g * dt)
 		p["p"] = Vector2(p["p"]) + Vector2(p["v"]) * dt
 		p["rot"] = float(p["rot"]) + float(p["vr"]) * dt
@@ -851,6 +910,14 @@ func _quad(ci: CanvasItem, pts: Array, col: Color) -> void:
 
 const QUAD_IDX := [0, 1, 2, 0, 2, 3]
 
+
+## 上下兩種顏色的貼圖四邊形 (做出每片肉上亮下暗)
+func _quad_tex2(ci: CanvasItem, pts: Array, ct: Color, cb: Color, u0: float, u1: float, v0: float, v1: float, tex: Texture2D) -> void:
+	RenderingServer.canvas_item_add_triangle_array(ci.get_canvas_item(), PackedInt32Array(QUAD_IDX), PackedVector2Array(pts),
+		PackedColorArray([ct, ct, cb, cb]), PackedVector2Array([Vector2(u0, v0), Vector2(u1, v0), Vector2(u1, v1), Vector2(u0, v1)]),
+		PackedInt32Array(), PackedFloat32Array(), tex.get_rid())
+
+
 ## 貼圖四邊形。注意：draw_primitive 在 Godot 4.3 連續呼叫時會沿用第一張貼圖，所以直接用 RenderingServer
 func _quad_tex(ci: CanvasItem, pts: Array, col: Color, u0: float, u1: float, v0: float, v1: float, tex: Texture2D) -> void:
 	RenderingServer.canvas_item_add_triangle_array(ci.get_canvas_item(), PackedInt32Array(QUAD_IDX), PackedVector2Array(pts),
@@ -883,7 +950,7 @@ func _text(ci: CanvasItem, s: String, x: float, y: float, size: int, col: Color,
 func _draw_bg(ci: CanvasItem) -> void:
 	_quad_grad(ci, Vector2(-20, -20), Vector2(W + 20, -20), Vector2(W + 20, 330), Vector2(-20, 330), Color(0.05, 0.03, 0.12), Color(0.36, 0.12, 0.22))
 	var span := 26 * 74.0
-	var off := fposmod(-phi * 70.0, span)
+	var off := fposmod(-phi * 115.0, span)
 	for b in buildings:
 		var x := fposmod(float(b["x"]) + off, span) - 80.0
 		if x > W + 20:
@@ -898,13 +965,13 @@ func _draw_bg(ci: CanvasItem) -> void:
 				rs = (rs * 1103515245 + 12345) & 0x7fffffff
 				if rs % 5 < 2:
 					ci.draw_rect(Rect2(wx, wy, 6, 8), Color(1.0, 0.85, 0.45, 0.55))
-	var nx := fposmod(220.0 - phi * 110.0, 1400.0) - 220.0
+	var nx := fposmod(220.0 - phi * 130.0, 1400.0) - 220.0
 	var glow := 0.75 + 0.25 * sin(t * 9.0) * (1.0 if fmod(t, 4.0) < 3.6 else 0.0)
 	ci.draw_rect(Rect2(nx - 6, 150, 182, 56), Color(0.08, 0.02, 0.1))
 	_text(ci, "SHAWARMA", nx + 85, 190, 30, Color(1.0, 0.35, 0.7, glow), 10, Color(1.0, 0.2, 0.6, 0.25 * glow))
 	var wall_top := 300.0
 	_quad_grad(ci, Vector2(-20, wall_top), Vector2(W + 20, wall_top), Vector2(W + 20, FLOOR_Y), Vector2(-20, FLOOR_Y), Color(0.2, 0.17, 0.24), Color(0.13, 0.1, 0.16))
-	var toff := fposmod(-phi * 120.0, 48.0)
+	var toff := fposmod(-phi * 140.0, 48.0)
 	for x in range(-48, int(W) + 48, 48):
 		ci.draw_line(Vector2(x + toff, wall_top), Vector2(x + toff, FLOOR_Y), Color(0, 0, 0, 0.25), 2)
 	for y in range(int(wall_top), int(FLOOR_Y), 24):
@@ -964,7 +1031,22 @@ func _draw_shawarma(ci: CanvasItem) -> void:
 		var r0 := s.cell_radius(c * s.nrow)
 		ci.draw_primitive(PackedVector2Array([capc, s.pp(r0, a0, s.top), s.pp(r0, a0 + STEP, s.top)]), capcol, PackedVector2Array())
 	_ellipse(ci, capc, s.r_core * 0.9, s.r_core * 0.9 * Shawarma.ELL, Color(0.52, 0.26, 0.1))
-	_ellipse(ci, capc, 9, 4, Color(0.15, 0.12, 0.14))
+	# 頂端插一顆檸檬 / 番茄 / 辣椒 (真的沙威瑪攤會這樣放)
+	var top_col := Color(1.0, 0.82, 0.15)
+	if s.kind == "beef":
+		top_col = Color(0.9, 0.2, 0.12)
+	elif s.kind == "spicy":
+		top_col = Color(0.95, 0.1, 0.05)
+	var tr := 20.0 if s.is_boss else 15.0
+	var tp := capc + Vector2(0, -tr + 4)
+	if s.kind == "spicy":
+		_ellipse(ci, tp + Vector2(0, -4), 7, tr + 2, top_col)
+		ci.draw_line(tp + Vector2(0, -tr - 4), tp + Vector2(4, -tr - 12), Color(0.2, 0.6, 0.15), 4)
+	else:
+		_ellipse(ci, tp, tr, tr * 0.92, top_col.darkened(0.25))
+		_ellipse(ci, tp + Vector2(-1.5, -1.5), tr - 2.5, tr * 0.92 - 2.5, top_col)
+		_ellipse(ci, tp + Vector2(-tr * 0.35, -tr * 0.4), tr * 0.28, tr * 0.2, Color(1, 1, 0.9, 0.85))
+	ci.draw_rect(Rect2(cx - 3, tp.y - tr - 16, 6, 12), Color(0.8, 0.82, 0.88))
 
 	var pulse := 0.5 + 0.5 * sin(t * (10.0 if s.core_phase else 3.0))
 	var vtot := 6.0 * ROW_H   # 貼圖高度代表 6 列
@@ -1022,11 +1104,34 @@ func _draw_shawarma(ci: CanvasItem) -> void:
 			var rn := s.cell_radius(nc * s.nrow + r)
 			if rn < rad - 0.5:
 				_quad_tex(ci, [s.pp(rn, sa, yt), s.pp(rad, sa, yt), s.pp(rad, sa, yb), s.pp(rn, sa, yb)], Color(light * 0.75, light * 0.6, light * 0.6), u0, u0 + 0.01, v0, v1, raw_tex)
-			# 正面：烤肉貼圖 + 生肉疊上去
-			var front := [s.pp(rad, a0, yt), s.pp(rad, a1, yt), s.pp(rad, a1, yb), s.pp(rad, a0, yb)]
-			_quad_tex(ci, front, col, u0, u1, v0, v1, meat_tex)
-			if raw_a > 0.03:
-				_quad_tex(ci, front, raw_col, u0, u1, v0, v1, raw_tex)
+			# 正面：一片一片疊起來的薄肉，邊緣凹凸不平 (參考真的沙威瑪)
+			var c1 := (c + 1) % NCOL
+			var shh := ROW_H / Shawarma.SLICES
+			var jag_amp := 7.0 * clampf(tt * 1.5, 0.2, 1.0)
+			var prev0 := 0.0
+			var prev1 := 0.0
+			for k in Shawarma.SLICES:
+				var kk := r * Shawarma.SLICES + k
+				var j0 := s.slice_jag(c, kk)
+				var j1 := s.slice_jag(c1, kk)
+				var r0 := rad + j0 * jag_amp
+				var r1 := rad + j1 * jag_amp
+				var ys := yt + k * shh
+				var ye := ys + shh
+				var vs := v0 + (v1 - v0) * k / Shawarma.SLICES
+				var ve := vs + (v1 - v0) / Shawarma.SLICES
+				var br := 1.0 + (j0 + j1) * 0.18
+				var ctop := Color(col.r * br * 1.18, col.g * br * 1.12, col.b * br * 1.0)   # 上緣烤得酥脆金黃
+				var cbot := Color(col.r * br * 0.62, col.g * br * 0.55, col.b * br * 0.5)  # 下緣是片與片之間的陰影
+				# 這片比上一片凸出來 → 看得到它的頂面
+				if k > 0 and (r0 > prev0 + 1.0 or r1 > prev1 + 1.0):
+					_quad(ci, [s.pp(minf(prev0, r0), a0, ys), s.pp(minf(prev1, r1), a1, ys), s.pp(r1, a1, ys), s.pp(r0, a0, ys)], ctop.lightened(0.12))
+				var sl := [s.pp(r0, a0, ys), s.pp(r1, a1, ys), s.pp(r1, a1, ye), s.pp(r0, a0, ye)]
+				_quad_tex2(ci, sl, ctop, cbot, u0, u1, vs, ve, meat_tex)
+				if raw_a > 0.03:
+					_quad_tex2(ci, sl, Color(light * 1.05, light, light, raw_a), Color(light * 0.7, light * 0.6, light * 0.6, raw_a), u0, u1, vs, ve, raw_tex)
+				prev0 = r0
+				prev1 = r1
 			if cm > 0.3:
 				# 生肉表面冒泡泡 (長肉中)
 				if s.fresh[i] > 0.25:
@@ -1174,12 +1279,77 @@ func _draw_fx_front(ci: CanvasItem) -> void:
 		_text(ci, String(p["s"]), Vector2(p["p"]).x, Vector2(p["p"]).y, int(p["size"]), c, 5, Color(0, 0, 0, 0.8 * a))
 
 
+## 光劍刀光：粗的新月形，快速劃開再淡出 (三層：外光暈 / 綠色本體 / 白色刀芯)
+func _slash_fx(c: Vector2, r: float, a0: float, sweep: float, w: float, life: float) -> void:
+	life *= 1.3
+	w *= 1.35
+	arcs.append({"c": c, "r": r, "a0": a0, "sweep": sweep, "w": w, "life": life, "max": life, "echo": 0.0})
+	# 殘影：稍微落後、大一點、比較淡
+	arcs.append({"c": c, "r": r * 1.12, "a0": a0 - sweep * 0.08, "sweep": sweep, "w": w * 0.7, "life": life * 1.25, "max": life * 1.25, "echo": 1.0})
+
+
+func _draw_crescent(ci: CanvasItem, a: Dictionary) -> void:
+	var p := 1.0 - float(a["life"]) / float(a["max"])
+	var reveal := 1.0 - pow(1.0 - clampf(p / 0.4, 0.0, 1.0), 3.0)
+	var fade := 1.0 if p < 0.4 else clampf((1.0 - p) / 0.6, 0.0, 1.0)
+	var tail := maxf(0.0, reveal - 0.95)
+	var c: Vector2 = a["c"]
+	var r := float(a["r"]) * (1.0 + 0.08 * p)
+	var a0 := float(a["a0"])
+	var sweep := float(a["sweep"])
+	var w := float(a["w"])
+	var n := 26
+	for layer in 3:
+		var ws: float = [2.6, 1.15, 0.42][layer]
+		var base: Color = [Color(0.1, 0.9, 0.35, 0.55), Color(0.4, 1.0, 0.5, 1.0), Color(1, 1, 1, 1)][layer]
+		if float(a.get("echo", 0.0)) > 0.0:
+			base.a *= 0.35
+		var pts := PackedVector2Array()
+		var cols := PackedColorArray()
+		var idx := PackedInt32Array()
+		for k in n + 1:
+			var u := float(k) / n
+			var tu := lerpf(tail, reveal, u)
+			var ang := a0 + sweep * tu
+			var th := w * ws * pow(u, 0.6) * (1.0 - pow(u, 10.0) * 0.6)
+			var d := Vector2(cos(ang), sin(ang))
+			# 新月：外緣在半徑上，內緣往圓心縮 → 中間最粗
+			pts.append(c + d * (r + th * 0.35))
+			pts.append(c + d * (r - th * 0.65))
+			var col := base
+			col.a *= fade * pow(u, 0.8)
+			cols.append(col)
+			cols.append(col)
+			if k > 0:
+				var i := k * 2
+				idx.append_array([i - 2, i - 1, i, i - 1, i + 1, i])
+		RenderingServer.canvas_item_add_triangle_array(ci.get_canvas_item(), idx, pts, cols)
+	# 刀尖的速度線
+	if p < 0.5:
+		var ang := a0 + sweep * reveal
+		var d := Vector2(cos(ang), sin(ang))
+		var tg := Vector2(-d.y, d.x) * signf(sweep)
+		for j in 3:
+			var o := c + d * (r + (j - 1) * w * 0.4)
+			ci.draw_line(o, o - tg * (30.0 + j * 12.0) * (1.0 - p * 2.0), Color(0.8, 1.0, 0.85, 0.7 * (1.0 - p * 2.0)), 2.0)
+
+
 func _draw_fx_add(ci: CanvasItem) -> void:
 	for a in arcs:
-		var al := float(a["life"]) / 0.16
-		var w := 16.0 if a["big"] else 9.0
-		ci.draw_arc(Vector2(a["c"]), float(a["r"]), float(a["a0"]), float(a["a1"]), 24, Color(0.2, 0.9, 0.4, 0.6 * al), w + 12.0)
-		ci.draw_arc(Vector2(a["c"]), float(a["r"]), float(a["a0"]), float(a["a1"]), 24, Color(0.8, 1.0, 0.85, al), w)
+		_draw_crescent(ci, a)
+	for p in particles:
+		if p["k"] == "impact":
+			# 命中的星形閃光
+			var k := 1.0 - float(p["life"]) / float(p["max"])
+			var pos := Vector2(p["p"])
+			var sz := float(p["s"]) * (0.6 + k * 1.2)
+			var al := 1.0 - k
+			for j in 4:
+				var ang := float(p["rot"]) + j * PI * 0.5
+				var d := Vector2(cos(ang), sin(ang))
+				ci.draw_line(pos - d * sz, pos + d * sz, Color(0.6, 1.0, 0.7, al * 0.8), 5.0 * al + 1.0)
+				ci.draw_line(pos - d * sz * 0.6, pos + d * sz * 0.6, Color(1, 1, 1, al), 2.0)
+			ci.draw_circle(pos, sz * 0.35 * al + 2.0, Color(1, 1, 0.9, al))
 	for p in particles:
 		if p["k"] == "spark":
 			var c: Color = p["c"]
@@ -1203,6 +1373,9 @@ func _fmt_time(sec: float) -> String:
 func _draw_hud(ci: CanvasItem) -> void:
 	if state == "title":
 		_draw_title(ci)
+		return
+	if state == "story":
+		_draw_story(ci)
 		return
 	# HP
 	var hx := 22.0
@@ -1306,6 +1479,42 @@ func _draw_minimap(ci: CanvasItem) -> void:
 		_text(ci, str(f + 1), lc.x, lc.y + 6, 14, Color(1, 1, 1), 3)
 	var pm := mc + Vector2(0, mr * 0.8 + 14)
 	ci.draw_colored_polygon(PackedVector2Array([pm + Vector2(0, -8), pm + Vector2(-7, 4), pm + Vector2(7, 4)]), Color(0.4, 1, 0.6))
+
+
+func _draw_story(ci: CanvasItem) -> void:
+	var img = story_imgs[story_i]
+	var fade := clampf(state_t * 3.0, 0.0, 1.0)
+	if img != null:
+		var tx: Texture2D = img
+		var sc := minf(W / tx.get_width(), H / tx.get_height())
+		var sz := Vector2(tx.get_width(), tx.get_height()) * sc
+		ci.draw_rect(Rect2(0, 0, W, H), Color(0, 0, 0))
+		# 慢慢推近 (Ken Burns)
+		var zoom := 1.0 + 0.04 * minf(state_t, 6.0) / 6.0
+		var dsz := sz * zoom
+		ci.draw_texture_rect(tx, Rect2((Vector2(W, H) - dsz) * 0.5, dsz), false, Color(1, 1, 1, fade))
+	else:
+		# 沒有 Gemini 圖時：用遊戲畫面 + 大張主角代替
+		var tints := [Color(0.05, 0.02, 0.15, 0.55), Color(0.3, 0.02, 0.02, 0.35), Color(0.0, 0.05, 0.1, 0.6), Color(0.0, 0.1, 0.05, 0.5)]
+		ci.draw_rect(Rect2(0, 0, W, H), tints[story_i])
+		if story_i >= 2:
+			var key := "idle" if story_i == 2 else _resolve_anim("slash3")
+			var fr: Dictionary = anims[key]["frames"][0]
+			var tx: Texture2D = fr["tex"]
+			var h := 300.0
+			var sc := h / tx.get_height()
+			var x := 300.0 + (1.0 - fade) * -60.0
+			ci.draw_texture_rect(tx, Rect2(x - float(fr["ax"]) * tx.get_width() * sc, 430.0 - h, tx.get_width() * sc, h), false, Color(1, 1, 1, fade))
+	# 文字框
+	ci.draw_rect(Rect2(40, 410, W - 80, 104), Color(0, 0, 0, 0.72))
+	ci.draw_rect(Rect2(40, 410, W - 80, 104), Color(1, 0.85, 0.4, 0.8), false, 2.0)
+	var txt: String = STORY[story_i]
+	var shown := txt.substr(0, int(story_chars))
+	ci.draw_string(font, Vector2(64, 450), shown, HORIZONTAL_ALIGNMENT_LEFT, W - 128, 22, Color(1, 1, 1))
+	if story_chars >= txt.length():
+		_text(ci, "▼", W - 70, 500, 16, Color(1, 0.9, 0.4, 0.5 + 0.5 * sin(t * 6)), 3)
+	_text(ci, "點擊 / X 繼續　　C 跳過", W - 120, 30, 14, Color(1, 1, 1, 0.7), 3)
+	_text(ci, "%d / %d" % [story_i + 1, STORY.size()], 60, 30, 14, Color(1, 1, 1, 0.7), 3)
 
 
 func _draw_title(ci: CanvasItem) -> void:

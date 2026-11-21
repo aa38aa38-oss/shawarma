@@ -149,9 +149,21 @@ def import_shawarma(meta):
         print("shawarma", name)
 
 
+def import_story():
+    out_dir = os.path.join(OUT, "story")
+    os.makedirs(out_dir, exist_ok=True)
+    for path in sorted(glob.glob(os.path.join(SRC, "story", "story_*.*"))):
+        name = os.path.splitext(os.path.basename(path))[0]
+        im = Image.open(path).convert("RGB")
+        im.thumbnail((960, 540), Image.LANCZOS)
+        im.save(os.path.join(out_dir, name + ".png"))
+        print("story", name, im.size)
+
+
 if __name__ == "__main__":
     meta = {}
     import_hero(meta)
     import_shawarma(meta)
+    import_story()
     json.dump(meta, open(os.path.join(OUT, "art.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     print("寫入 art.json")
